@@ -39,6 +39,9 @@ Supabase（認証・DB・画像・行単位権限）＋ Leaflet 静的フロン�
 
 SQLは0001〜0005、Edge Functionは `supabase/functions/`（デプロイ手順は [supabase/README.md](supabase/README.md)）。
 
+## Phase2（写真・一括取り込み）
+詳細は [docs/phase2_photos_import.md](docs/phase2_photos_import.md)。写真アップロード（EXIF除去・縮小）と、lichens 公開データの一括取り込みツール（`tools/import_lichens.py`）。
+
 ## 次のステップ
 1. 公開前: Turnstile を本番キーに差し替え、独自SMTP（第三者への招待に必須）、GitHub Pages公開時のキーの渡し方・ALLOWED_ORIGINS・Site URL
 2. Phase2: 写真アップロード（EXIF除去・縮小）、`?probe=1` 相当

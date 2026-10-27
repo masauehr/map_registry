@@ -10,6 +10,10 @@
 ## 状態
 Phase1 完了（supabase/ のSQL5本・Edge Function2本＋web/ の最小フロント）。`web/config.js` はGit管理外（雛形は config.example.js）。
 
+## 一括取り込み
+- `tools/import_lichens.py` は `lichens/map_public`（自宅周辺除外済み）のみを取り込む。実行前にユーザー確認。secret key は `.env` のみ（Git管理外）。
+- rm -rf は使わない（グローバル設定で禁止）。
+
 ## ルール
 - 詳細は `README.md` と `docs/`（research_wajima_dx.md／design.md／security.md）。
 - キー類は `.env`（Git管理外）。`service_role` キーをフロントに置かない。

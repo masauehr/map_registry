@@ -12,3 +12,5 @@ local/
 
 # 接続設定（雛形は web/config.example.js）
 web/config.js
+__pycache__/
+*.pyc

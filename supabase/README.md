@@ -3,6 +3,7 @@
 - `migrations/0001_init.sql` — テーブル・RLS・投稿RPC・初期カテゴリ
 - `migrations/0002_fix_policies.sql` — anon で points が読めない問題の修正（0001の後に適用）
 - `migrations/0003_points_map_view.sql` — 地図用ビュー（lat/lng を数値で返す）。0002の後に適用
+- `migrations/0004`〜`0006` — 申請のFunction化／service_role権限／写真(Storage)。順に適用
 - `tests/0001_rls_check.sql` — 公開前のRLS検証
 
 ## 適用手順（ダッシュボード）

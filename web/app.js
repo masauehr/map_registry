@@ -32,6 +32,19 @@ const showPanel = (...nodes) => { panel.replaceChildren(...nodes); panel.hidden 
 const hidePanel = () => { panel.hidden = true; map.invalidateSize(); };
 const msg = (text, ok) => el("div", { className: "msg" + (ok ? " ok" : ""), textContent: text });
 
+const photoUrl = path => `${cfg.url}/storage/v1/object/public/photos/${path.split("/").map(encodeURIComponent).join("/")}`;
+
+// 写真を長辺1600px以内のJPEGに再エンコードする。canvasを通すのでEXIF（GPS含む）は残らない。
+async function shrinkPhoto(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = el("canvas", { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.82));
+  if (!blob || blob.size > 2 * 1024 * 1024) throw new Error("写真が大きすぎます");
+  return blob;
+}
+
 async function loadCategories() {
   const { data } = await sb.from("categories").select("id,name,fields").order("id");
   categories = data || [];
@@ -41,7 +54,7 @@ async function loadCategories() {
 
 async function loadPoints() {
   layer.clearLayers();
-  let q = sb.from("points_map").select("id,category_id,note,observed_at,extra,status,lat,lng");
+  let q = sb.from("points_map").select("id,category_id,note,observed_at,extra,status,lat,lng,photo_path");
   if (filterEl.value) q = q.eq("category_id", filterEl.value);
   const { data, error } = await q.limit(2000);
   if (error) { console.error(error); return; }
@@ -50,9 +63,11 @@ async function loadPoints() {
     const color = p.status === "approved" ? "#1f77b4" : "#e67e22";
     const m = L.circleMarker([lat, lng], { radius: 7, color, fillOpacity: 0.7 }).addTo(layer);
     const cat = categories.find(c => c.id === p.category_id);
+    const photo = p.photo_path ? el("img", { src: photoUrl(p.photo_path), loading: "lazy", alt: "", style: "max-width:220px;max-height:220px;display:block;margin:4px 0" }) : "";
     const body = el("div", {},
       el("b", { textContent: (cat ? cat.name : p.category_id) + (p.status === "approved" ? "" : "（未承認）") }),
       el("div", { textContent: new Date(p.observed_at).toLocaleString("ja-JP") }),
+      photo,
       el("div", { textContent: p.note }),
       el("div", { textContent: Object.entries(p.extra || {}).map(([k, v]) => `${k}: ${v}`).join(" / ") }));
     m.bindPopup(body);
@@ -147,6 +162,7 @@ function showPostPanel() {
   const blur = el("select", {}, ...[[0, "ぼかさない"], [500, "約500m"], [1000, "約1km"], [5000, "約5km"]]
     .map(([v, t]) => el("option", { value: v, textContent: t })));
   const extraBox = el("div");
+  const photoIn = el("input", { type: "file", accept: "image/jpeg,image/png,image/webp" });
   const pos = el("div", { textContent: "地図をクリックして位置を選んでください" });
   const out = el("div");
   const renderExtra = () => {
@@ -163,15 +179,25 @@ function showPostPanel() {
     if (!picked) { out.replaceChildren(msg("位置を選んでください")); return; }
     const extra = {};
     extraBox.querySelectorAll("[name]").forEach(i => { if (i.value) extra[i.name] = i.value; });
+    let photoPath = null;
+    if (photoIn.files[0]) {
+      try {
+        const blob = await shrinkPhoto(photoIn.files[0]);
+        photoPath = `${me.user.id}/${crypto.randomUUID()}.jpg`;
+        const up = await sb.storage.from("photos").upload(photoPath, blob, { contentType: "image/jpeg" });
+        if (up.error) throw up.error;
+      } catch (e) { out.replaceChildren(msg("写真を処理できませんでした（JPEG/PNG推奨）: " + e.message)); return; }
+    }
     const { error } = await sb.rpc("submit_point", {
       p_category: cat.value, p_lng: picked.lng, p_lat: picked.lat, p_note: note.value,
-      p_extra: extra, p_blur_m: Number(blur.value) });
+      p_photo_path: photoPath, p_extra: extra, p_blur_m: Number(blur.value) });
     if (error) { out.replaceChildren(msg("投稿できませんでした: " + error.message)); return; }
     out.replaceChildren(msg("投稿しました（承認後に公開されます）", true));
-    note.value = ""; await loadPoints();
+    note.value = ""; photoIn.value = ""; await loadPoints();
   };
   const nodes = [el("h3", { textContent: "地点を登録" }), el("label", { textContent: "カテゴリ" }), cat,
-    el("label", { textContent: "メモ" }), note, extraBox, el("label", { textContent: "公開位置のぼかし" }), blur,
+    el("label", { textContent: "メモ" }), note, extraBox,
+    el("label", { textContent: "写真（任意・位置情報は自動で削除）" }), photoIn, el("label", { textContent: "公開位置のぼかし" }), blur,
     pos, el("p", {}, go), out];
   if (me.member.role === "admin") nodes.push(el("hr"), el("button", { textContent: "承認待ちを確認", onclick: adminPanel }));
   showPanel(...nodes);
