@@ -40,12 +40,12 @@ async function loadCategories() {
 
 async function loadPoints() {
   layer.clearLayers();
-  let q = sb.from("points").select("id,category_id,note,observed_at,extra,status,display_geom");
+  let q = sb.from("points_map").select("id,category_id,note,observed_at,extra,status,lat,lng");
   if (filterEl.value) q = q.eq("category_id", filterEl.value);
   const { data, error } = await q.limit(2000);
   if (error) { console.error(error); return; }
   (data || []).forEach(p => {
-    const [lng, lat] = p.display_geom.coordinates;
+    const { lat, lng } = p;
     const color = p.status === "approved" ? "#1f77b4" : "#e67e22";
     const m = L.circleMarker([lat, lng], { radius: 7, color, fillOpacity: 0.7 }).addTo(layer);
     const cat = categories.find(c => c.id === p.category_id);
@@ -148,7 +148,19 @@ async function adminPanel() {
   const { data: pts } = await sb.from("points").select("id,category_id,note,observed_at").eq("status", "pending").order("created_at");
   const { data: apps } = await sb.from("applications").select("id,display_name,purpose,created_at").eq("status", "pending").order("created_at");
   const act = (table, id, status) => async () => {
-    await sb.from(table).update(table === "points" ? { status } : { status, reviewed_at: new Date().toISOString(), reviewed_by: me.user.id }).eq("id", id);
+    panel.prepend(msg("処理中…（" + status + "）", true));
+    try { await doAct(table, id, status); } catch (e) { console.error(e); panel.prepend(msg("例外: " + e.message)); }
+  };
+  const doAct = async (table, id, status) => {
+    const { data, error } = await sb.from(table)
+      .update(table === "points" ? { status } : { status, reviewed_at: new Date().toISOString(), reviewed_by: me.user.id })
+      .eq("id", id).select("id");
+    if (error || !data || data.length === 0) {
+      // 失敗の理由を画面に出す（RLSで0件更新のときもここに来る）
+      console.error("承認/却下に失敗", error, data);
+      panel.prepend(msg("更新できませんでした: " + (error ? error.message : "対象が更新されませんでした（権限を確認）")));
+      return;
+    }
     await loadPoints(); adminPanel();
   };
   const list = (rows, table, label) => (rows || []).map(r => el("div", { className: "item" },
