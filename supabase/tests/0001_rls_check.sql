@@ -1,5 +1,5 @@
 -- RLS 検証（SQL Editor で実行）。anon として動かし、書き込み・非公開列が拒否されることを確認する。
--- 期待: すべて「エラー」または「0件」になること。
+-- 期待: 1・2・4 は permission denied、3 は 0、5 は 0行。（0002_fix_policies.sql 適用後に実行）
 
 begin;
 set local role anon;
@@ -18,6 +18,7 @@ begin;
 set local role anon;
 -- 3) 地点の非公開列（status以外の投稿者情報）はなく、未承認は0件
 select count(*) as pending_visible from public.points where status <> 'approved';  -- 期待: 0
+select count(*) as categories_visible from public.categories;  -- 期待: 3
 rollback;
 
 begin;

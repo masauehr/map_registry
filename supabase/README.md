@@ -1,10 +1,11 @@
 # supabase/ — DB定義
 
 - `migrations/0001_init.sql` — テーブル・RLS・投稿RPC・初期カテゴリ
+- `migrations/0002_fix_policies.sql` — anon で points が読めない問題の修正（0001の後に適用）
 - `tests/0001_rls_check.sql` — 公開前のRLS検証
 
 ## 適用手順（ダッシュボード）
-1. Supabase の SQL Editor で `0001_init.sql` の全文を貼り付けて Run。
+1. Supabase の SQL Editor で `0001_init.sql`、続けて `0002_fix_policies.sql` の全文を貼り付けて Run。
 2. `0001_rls_check.sql` を **1ブロックずつ** 実行し、期待どおり（エラー or 0件）か確認。
 3. 最初の管理者: Authentication → Users で自分を追加（Add user）し、SQL Editor で次を実行。
    `<ユーザーUUID>` は Users 画面に表示される ID。メールアドレスはここに書かない。
