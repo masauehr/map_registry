@@ -8,7 +8,7 @@
 - リポジトリは公開（masauehr/map_registry）。秘密情報はコミットしない。
 
 ## 状態
-Phase1 完了（supabase/ のSQL5本・Edge Function2本＋web/ の最小フロント）。`web/config.js` はGit管理外（雛形は config.example.js）。
+Phase2 完了（写真・一括取り込み済み。Phase1: supabase/ のSQL5本・Edge Function2本＋web/ の最小フロント）。`web/config.js` はGit管理外（雛形は config.example.js）。
 
 ## 一括取り込み
 - `tools/import_lichens.py` は `lichens/map_public`（自宅周辺除外済み）のみを取り込む。実行前にユーザー確認。secret key は `.env` のみ（Git管理外）。

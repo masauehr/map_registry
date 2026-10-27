@@ -2,7 +2,7 @@
 
 詳しくは [MANUAL.md](MANUAL.md) も参照。
 
-状態: **Phase1 完了（申請→承認→招待→パスワード設定→投稿→承認→公開まで動作確認済み）** ／ 作成: 2026-10-27 ／ 詳しくは [docs/research_wajima_dx.md](docs/research_wajima_dx.md)・[docs/design.md](docs/design.md)・[docs/security.md](docs/security.md) を参照。
+状態: **Phase2 完了（申請→承認→招待→投稿→公開、写真・EXIF読み取り、lichens 6,692件の一括取り込みまで動作確認済み）** ／ 作成: 2026-10-27 ／ 詳しくは [docs/research_wajima_dx.md](docs/research_wajima_dx.md)・[docs/design.md](docs/design.md)・[docs/security.md](docs/security.md) を参照。
 
 ## 目的
 [lichens](../lichens/) の「地図にデータを登録して公開する」仕組みを、**許可された複数人が登録できる形**に広げる。閲覧は誰でも、登録は招待制、公開は管理者の承認後。災害時の情報共有（輪島市の例）にも応用できる設計を目指す。
