@@ -16,7 +16,7 @@ const map = L.map("map").setView([36.5, 138], 5);
 L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", {
   attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>', maxZoom: 18
 }).addTo(map);
-const layer = L.layerGroup().addTo(map);
+const layer = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 50 }).addTo(map);  // 多数の点をまとめて表示
 
 let me = null;          // { user, member }
 let categories = [];
@@ -61,26 +61,40 @@ async function loadCategories() {
     ...categories.map(c => el("option", { value: c.id, textContent: c.name })));
 }
 
+// APIは1回に最大1000件しか返さないため、ページに分けて全件を読む
+async function fetchAllPoints() {
+  const size = 1000, all = [];
+  for (let from = 0; ; from += size) {
+    let q = sb.from("points_map").select("id,category_id,note,observed_at,extra,status,lat,lng,photo_path").order("id");
+    if (filterEl.value) q = q.eq("category_id", filterEl.value);
+    const { data, error } = await q.range(from, from + size - 1);
+    if (error) { console.error(error); break; }
+    all.push(...data);
+    if (data.length < size) break;
+  }
+  return all;
+}
+
 async function loadPoints() {
   layer.clearLayers();
-  let q = sb.from("points_map").select("id,category_id,note,observed_at,extra,status,lat,lng,photo_path");
-  if (filterEl.value) q = q.eq("category_id", filterEl.value);
-  const { data, error } = await q.limit(2000);
-  if (error) { console.error(error); return; }
-  (data || []).forEach(p => {
-    const { lat, lng } = p;
+  const data = await fetchAllPoints();
+  const markers = data.map(p => {
     const color = p.status === "approved" ? "#1f77b4" : "#e67e22";
-    const m = L.circleMarker([lat, lng], { radius: 7, color, fillOpacity: 0.7 }).addTo(layer);
-    const cat = categories.find(c => c.id === p.category_id);
-    const photo = p.photo_path ? el("img", { src: photoUrl(p.photo_path), loading: "lazy", alt: "", style: "max-width:220px;max-height:220px;display:block;margin:4px 0" }) : "";
-    const body = el("div", {},
-      el("b", { textContent: (cat ? cat.name : p.category_id) + (p.status === "approved" ? "" : "（未承認）") }),
-      el("div", { textContent: new Date(p.observed_at).toLocaleString("ja-JP") }),
-      photo,
-      el("div", { textContent: p.note }),
-      el("div", { textContent: Object.entries(p.extra || {}).map(([k, v]) => `${k}: ${v}`).join(" / ") }));
-    m.bindPopup(body);
+    const m = L.circleMarker([p.lat, p.lng], { radius: 7, color, fillOpacity: 0.7 });
+    // ポップアップの中身は開いたときに作る（件数が多くても軽くする。画像もこの時点で初めて読み込まれる）
+    m.bindPopup(() => {
+      const cat = categories.find(c => c.id === p.category_id);
+      const photo = p.photo_path ? el("img", { src: photoUrl(p.photo_path), alt: "", style: "max-width:220px;max-height:220px;display:block;margin:4px 0" }) : "";
+      return el("div", {},
+        el("b", { textContent: (cat ? cat.name : p.category_id) + (p.status === "approved" ? "" : "（未承認）") }),
+        el("div", { textContent: new Date(p.observed_at).toLocaleString("ja-JP") }),
+        photo,
+        el("div", { textContent: p.note }),
+        el("div", { textContent: Object.entries(p.extra || {}).map(([k, v]) => `${k}: ${v}`).join(" / ") }));
+    });
+    return m;
   });
+  layer.addLayers(markers);
 }
 
 async function refreshMe() {
