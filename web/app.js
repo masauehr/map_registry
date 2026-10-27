@@ -252,6 +252,8 @@ function showPostPanel() {
     observedAt = null; altitude = null; exifText.value = ""; photoInfo.textContent = "";
     const f = photoIn.files[0];
     if (!f) return;
+    if (typeof exifr === "undefined") { photoInfo.textContent = "【原因A】読み取り用ライブラリが読み込めていません。再読み込み（Safari は ⌘+Option+R）してください"; return; }
+    photoInfo.textContent = `選択: ${f.type || "形式不明"} / ${(f.size / 1024).toFixed(0)}KB。位置情報を確認中…`;
     try {
       const gps = await exifr.gps(f);
       const meta = await exifr.parse(f, ["DateTimeOriginal", "GPSAltitude", "GPSAltitudeRef"]);
@@ -267,10 +269,11 @@ function showPostPanel() {
         exifText.value = [`緯度 ${gps.latitude.toFixed(6)}`, `経度 ${gps.longitude.toFixed(6)}`,
           altitude !== null ? `標高 ${altitude.toFixed(1)} m` : "標高 （なし）", observedAt ? `撮影日 ${fmtDate(observedAt)}` : "撮影日 （なし）"].join("\n");
       } else {
-        photoInfo.textContent = "この写真には位置情報がありません。地図をクリックして位置を選んでください" + (observedAt ? "（撮影日時は反映します）" : "");
+        photoInfo.textContent = "【原因B】この写真ファイルには位置情報が入っていません（写真アプリから選ぶと位置が外れることがあります）。地図をクリックして位置を選んでください" + (observedAt ? "（撮影日時は反映します）" : "");
       }
     } catch (e) {
-      photoInfo.textContent = "写真の位置情報を読み取れませんでした。地図をクリックして位置を選んでください";
+      console.error("EXIF読み取りエラー", e);
+      photoInfo.textContent = "【原因C】読み取り中にエラー: " + (e && e.message ? e.message : e) + "。地図をクリックして位置を選んでください";
     }
   };
 }
