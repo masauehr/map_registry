@@ -35,11 +35,20 @@ const msg = (text, ok) => el("div", { className: "msg" + (ok ? " ok" : ""), text
 const photoUrl = path => `${cfg.url}/storage/v1/object/public/photos/${path.split("/").map(encodeURIComponent).join("/")}`;
 
 // 写真を長辺1600px以内のJPEGに再エンコードする。canvasを通すのでEXIF（GPS含む）は残らない。
-async function shrinkPhoto(file) {
+async function shrinkPhoto(file, stampLines = []) {
   const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
   const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
   const c = el("canvas", { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
-  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const ctx = c.getContext("2d");
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  if (stampLines.length) {  // 下部に半透明の帯を敷き、位置・標高・日時を文字で入れる
+    const fs = Math.max(14, Math.round(c.width / 38)), pad = Math.round(fs * 0.5);
+    ctx.font = `${fs}px sans-serif`;
+    const h = stampLines.length * fs * 1.25 + pad * 2;
+    ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(0, c.height - h, c.width, h);
+    ctx.fillStyle = "#fff"; ctx.textBaseline = "top";
+    stampLines.forEach((t, i) => ctx.fillText(t, pad, c.height - h + pad + i * fs * 1.25));
+  }
   const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.82));
   if (!blob || blob.size > 2 * 1024 * 1024) throw new Error("写真が大きすぎます");
   return blob;
@@ -165,6 +174,26 @@ function showPostPanel() {
   const photoIn = el("input", { type: "file", accept: "image/jpeg,image/png,image/webp,image/heic" });
   const photoInfo = el("div", { style: "font-size:12px;color:#555" });
   let observedAt = null;  // 写真の撮影日時（EXIFにあれば）
+  let altitude = null;    // 写真の標高(m)（EXIFにあれば）
+  const exifText = el("textarea", { readOnly: true, rows: 3, placeholder: "写真の位置情報（緯度・経度・標高・撮影日）がここに表示されます" });
+  const copyBtn = el("button", { textContent: "コピー", type: "button", onclick: () => navigator.clipboard && exifText.value && navigator.clipboard.writeText(exifText.value) });
+  const stampChk = el("input", { type: "checkbox" });
+  const altChk = el("input", { type: "checkbox", checked: true });
+  const fmtDate = d => `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  // 選んだぼかしを反映した「公開される位置」（サーバーの処理と同じ格子の中心）
+  const publicPos = () => {
+    const m = Number(blur.value);
+    if (!m) return picked;
+    const g = m / 111000;
+    return { lat: Math.round(picked.lat / g) * g + g / 2, lng: Math.round(picked.lng / g) * g + g / 2 };
+  };
+  const stampLines = () => {
+    const out = [];
+    if (picked) { const q = publicPos(); out.push(`緯度 ${q.lat.toFixed(Number(blur.value) ? 4 : 5)}  経度 ${q.lng.toFixed(Number(blur.value) ? 4 : 5)}`); }
+    if (altitude !== null) out.push(`標高 ${altitude.toFixed(1)} m`);
+    if (observedAt) out.push(`撮影 ${fmtDate(observedAt)}`);
+    return out;
+  };
   const pos = el("div", { textContent: "地図をクリックして位置を選んでください" });
   const out = el("div");
   const renderExtra = () => {
@@ -181,10 +210,11 @@ function showPostPanel() {
     if (!picked) { out.replaceChildren(msg("位置を選んでください")); return; }
     const extra = {};
     extraBox.querySelectorAll("[name]").forEach(i => { if (i.value) extra[i.name] = i.value; });
+    if (altChk.checked && altitude !== null) extra["標高(m)"] = Number(altitude.toFixed(1));
     let photoPath = null;
     if (photoIn.files[0]) {
       try {
-        const blob = await shrinkPhoto(photoIn.files[0]);
+        const blob = await shrinkPhoto(photoIn.files[0], stampChk.checked ? stampLines() : []);
         photoPath = `${me.user.id}/${crypto.randomUUID()}.jpg`;
         const up = await sb.storage.from("photos").upload(photoPath, blob, { contentType: "image/jpeg" });
         if (up.error) throw up.error;
@@ -196,11 +226,15 @@ function showPostPanel() {
       ...(observedAt ? { p_observed_at: observedAt.toISOString() } : {}) });
     if (error) { out.replaceChildren(msg("投稿できませんでした: " + error.message)); return; }
     out.replaceChildren(msg("投稿しました（承認後に公開されます）", true));
-    note.value = ""; photoIn.value = ""; observedAt = null; photoInfo.textContent = ""; await loadPoints();
+    note.value = ""; photoIn.value = ""; observedAt = null; altitude = null; exifText.value = ""; photoInfo.textContent = ""; await loadPoints();
   };
   const nodes = [el("h3", { textContent: "地点を登録" }), el("label", { textContent: "カテゴリ" }), cat,
     el("label", { textContent: "メモ" }), note, extraBox,
-    el("label", { textContent: "写真（任意・位置情報は自動で削除）" }), photoIn, photoInfo, el("label", { textContent: "公開位置のぼかし" }), blur,
+    el("label", { textContent: "写真（任意・位置情報は自動で削除）" }), photoIn, photoInfo,
+    el("label", { textContent: "写真から読み取った情報（コピー可）" }), exifText, el("p", {}, copyBtn),
+    el("label", {}, altChk, " 標高を属性に記録する"),
+    el("label", {}, stampChk, " 位置・標高・日時を写真に文字で入れる（公開位置のぼかしを反映）"),
+    el("label", { textContent: "公開位置のぼかし" }), blur,
     pos, el("p", {}, go), out];
   if (me.member.role === "admin") nodes.push(el("hr"), el("button", { textContent: "承認待ちを確認", onclick: adminPanel }));
   showPanel(...nodes);
@@ -215,17 +249,23 @@ function showPostPanel() {
 
   // 写真を選んだら、EXIFの位置と撮影日時をブラウザ内で読み取り、地図に反映する（写真自体は送信しない）
   photoIn.onchange = async () => {
-    observedAt = null; photoInfo.textContent = "";
+    observedAt = null; altitude = null; exifText.value = ""; photoInfo.textContent = "";
     const f = photoIn.files[0];
     if (!f) return;
     try {
       const gps = await exifr.gps(f);
-      const meta = await exifr.parse(f, ["DateTimeOriginal"]);
+      const meta = await exifr.parse(f, ["DateTimeOriginal", "GPSAltitude", "GPSAltitudeRef"]);
       if (meta && meta.DateTimeOriginal instanceof Date && !isNaN(meta.DateTimeOriginal)) observedAt = meta.DateTimeOriginal;
+      if (meta && Number.isFinite(meta.GPSAltitude)) {
+        const below = meta.GPSAltitudeRef === 1 || /below/i.test(String(meta.GPSAltitudeRef ?? ""));
+        altitude = below ? -meta.GPSAltitude : meta.GPSAltitude;
+      }
       if (gps && Number.isFinite(gps.latitude) && Number.isFinite(gps.longitude)) {
         setPick(L.latLng(gps.latitude, gps.longitude));
         map.setView(picked, Math.max(map.getZoom(), 15));
         photoInfo.textContent = "写真の位置情報を読み取り、地図に反映しました（違う場合は地図をクリックして修正できます）" + (observedAt ? "。撮影日時も反映します" : "");
+        exifText.value = [`緯度 ${gps.latitude.toFixed(6)}`, `経度 ${gps.longitude.toFixed(6)}`,
+          altitude !== null ? `標高 ${altitude.toFixed(1)} m` : "標高 （なし）", observedAt ? `撮影日 ${fmtDate(observedAt)}` : "撮影日 （なし）"].join("\n");
       } else {
         photoInfo.textContent = "この写真には位置情報がありません。地図をクリックして位置を選んでください" + (observedAt ? "（撮影日時は反映します）" : "");
       }
