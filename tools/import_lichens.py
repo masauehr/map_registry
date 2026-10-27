@@ -15,7 +15,7 @@
         --excluded-blur-m 1000 --excluded-photos main_maybe                           # ドライラン（除外分も）
     ... --apply        # 実登録（--limit N で各グループの先頭N件だけ試験）
 """
-import argparse, json, os, sys, uuid, urllib.request, urllib.error
+import argparse, hashlib, json, os, re, sys, time, uuid, urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -50,6 +50,15 @@ def request(method, url, key, body=None, extra=None):
             return r.status
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"{method} {url.split('/v1/')[-1][:40]} -> {e.code} {e.read().decode()[:200]}")
+
+
+def photo_name(r):
+    """Storage のファイル名。安全な文字だけの id はそのまま（既存のアップロードと互換）、
+    スペース・括弧などを含む id は、記号を _ にして短いハッシュを付ける（衝突防止）。"""
+    i = r["id"]
+    if re.fullmatch(r"[A-Za-z0-9_.-]+", i):
+        return i
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", i) + "_" + hashlib.sha1(i.encode("utf-8")).hexdigest()[:8]
 
 
 def located(rows):
@@ -114,8 +123,16 @@ def main():
     # 1) サムネイルをアップロード（import/lichens/<id>.jpg。再実行は上書き）
     def upload(it):
         r, d = it[0], it[1]
-        request("POST", f"{url}/storage/v1/object/photos/import/lichens/{r['id']}.jpg", key,
-                (d / r["thumb"]).read_bytes(), {"Content-Type": "image/jpeg", "x-upsert": "true"})
+        body = (d / r["thumb"]).read_bytes()
+        for attempt in range(4):  # 一時的な通信エラー・5xx は再試行する
+            try:
+                request("POST", f"{url}/storage/v1/object/photos/import/lichens/{photo_name(r)}.jpg", key,
+                        body, {"Content-Type": "image/jpeg", "x-upsert": "true"})
+                return
+            except (urllib.error.URLError, TimeoutError, RuntimeError) as e:
+                if attempt == 3 or (isinstance(e, RuntimeError) and " -> 4" in str(e)):
+                    raise
+                time.sleep(2 * (attempt + 1))
     print("写真をアップロード中…")
     with ThreadPoolExecutor(8) as ex:
         for i, _ in enumerate(ex.map(upload, photo_items), 1):
@@ -133,7 +150,7 @@ def main():
             dlon, dlat = lon, lat
         pid = str(uuid.uuid5(NS, "lichens:" + r["id"]))
         point = {"id": pid, "category_id": "lichen", "display_geom": f"SRID=4326;POINT({dlon} {dlat})",
-                 "note": "", "photo_path": f"import/lichens/{r['id']}.jpg" if photo else None,
+                 "note": "", "photo_path": f"import/lichens/{photo_name(r)}.jpg" if photo else None,
                  "observed_at": r["taken"] + "+09:00",
                  "extra": {"source": "lichens", "kind": r["kind"]}, "status": "approved"}
         priv = {"point_id": pid, "geom": f"SRID=4326;POINT({lon} {lat})", "created_by": uid}
