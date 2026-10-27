@@ -10,6 +10,9 @@
 ## 状態
 Phase2 完了（写真・一括取り込み済み。Phase1: supabase/ のSQL5本・Edge Function2本＋web/ の最小フロント）。`web/config.js` はGit管理外（雛形は config.example.js）。
 
+## 公開・再開
+- 公開URL https://masauehr.github.io/map_registry/ （GitHub Pages、`config.js` は Actions 変数から生成）。未完了の設定・再開手順は docs/resume.md。
+
 ## 一括取り込み
 - `tools/import_lichens.py` は `lichens/map_public`（自宅周辺除外済み）のみを取り込む。実行前にユーザー確認。secret key は `.env` のみ（Git管理外）。
 - rm -rf は使わない（グローバル設定で禁止）。

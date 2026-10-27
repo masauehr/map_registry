@@ -39,11 +39,13 @@ Supabase（認証・DB・画像・行単位権限）＋ Leaflet 静的フロン�
 
 SQLは0001〜0005、Edge Functionは `supabase/functions/`（デプロイ手順は [supabase/README.md](supabase/README.md)）。
 
+**公開URL: https://masauehr.github.io/map_registry/** ／ 中断時点の状態と再開手順は [docs/resume.md](docs/resume.md)
+
 ## Phase2（写真・一括取り込み）
 詳細は [docs/phase2_photos_import.md](docs/phase2_photos_import.md)。写真アップロード（EXIF除去・縮小）と、lichens 公開データの一括取り込みツール（`tools/import_lichens.py`）。
 
 ## 次のステップ
-1. 公開前: Turnstile を本番キーに差し替え、独自SMTP（第三者への招待に必須）、GitHub Pages公開時のキーの渡し方・ALLOWED_ORIGINS・Site URL
+1. 公開ページで申請・招待を動かす設定（ALLOWED_ORIGINS・SITE_URL・Site URL）、本番 Turnstile、独自SMTP（詳細は [docs/resume.md](docs/resume.md)）
 2. Phase2: 写真アップロード（EXIF除去・縮小）、`?probe=1` 相当
 3. 地衣類カテゴリの本格対応 → 防災カテゴリ
 4. 防災クロスビュー等の利用規約確認

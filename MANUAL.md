@@ -1,6 +1,6 @@
 # map_registry — 許可制・承認制の地図登録システム
 
-状態: Phase2 完了（写真・EXIF読み取り・lichens一括取り込み済み） ／ 作成: 2026-10-27
+状態: Phase2 完了・GitHub Pages公開済み（申請・招待の公開設定と本番Turnstileは未了） ／ 作成: 2026-10-27
 
 ## 概要
 lichens の地図公開の仕組みを、許可された複数人が登録できる形に拡張する構想。閲覧は誰でも、登録は招待制、公開は管理者の承認後。
@@ -49,3 +49,9 @@ Supabase（認証・DB・画像・行単位権限）＋ Leaflet 静的フロン�
 - つまずき: ファイル名のスペース・括弧でURLエラー→安全な名前に変換＋再試行。RLS・権限・キャッシュ・JWT等は前節。
 - 取り込み後: 取り込み用 secret key は削除し、.env の該当行も消す。やり直しは `delete from points where extra->>'source'='lichens'` ＋ Storage の import/lichens/ を削除。
 - 未実装: 本番Turnstile・独自SMTP・GitHub Pages公開・防災カテゴリの本格対応。
+
+## GitHub Pages 公開（2026-10-27）と中断時点の状態
+- 公開URL: https://masauehr.github.io/map_registry/ 。`.github/workflows/pages.yml` が `web/` を公開し、`config.js` は Actions 変数（SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY / TURNSTILE_SITE_KEY）から生成。
+- 未完了: 公開ページで申請・招待を動かすための Supabase 設定（Secrets の ALLOWED_ORIGINS・SITE_URL、Authentication の Site URL/Redirect URLs）。
+- 公開前に必要: 本番 Turnstile（現在はテスト用キーで実質ボット対策なし）、独自SMTP、取り込んだ除外分の写真の目視確認。
+- 詳細・再開手順は `map_registry/docs/resume.md`。
