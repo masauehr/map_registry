@@ -1,0 +1,15 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; }
+header { display: flex; gap: 8px; align-items: center; padding: 6px 12px; background: #1f3a5f; color: #fff; flex-wrap: wrap; }
+header h1 { font-size: 16px; margin: 0 auto 0 0; }
+header select, header button { font-size: 14px; }
+#who { font-size: 13px; }
+main { flex: 1; display: flex; min-height: 0; }
+#map { flex: 1; }
+#panel { width: 320px; padding: 12px; overflow: auto; background: #f7f7f7; border-left: 1px solid #ccc; }
+#panel label { display: block; margin: 8px 0 2px; font-size: 13px; }
+#panel input, #panel select, #panel textarea { width: 100%; font-size: 14px; }
+#panel .msg { margin-top: 8px; font-size: 13px; color: #a00; }
+#panel .ok { color: #070; }
+#panel .item { border-bottom: 1px solid #ddd; padding: 6px 0; font-size: 13px; }
+@media (max-width: 700px) { main { flex-direction: column; } #panel { width: 100%; max-height: 45vh; } }
