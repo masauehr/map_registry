@@ -254,26 +254,29 @@ function showPostPanel() {
     if (!f) return;
     if (typeof exifr === "undefined") { photoInfo.textContent = "【原因A】読み取り用ライブラリが読み込めていません。再読み込み（Safari は ⌘+Option+R）してください"; return; }
     photoInfo.textContent = `選択: ${f.type || "形式不明"} / ${(f.size / 1024).toFixed(0)}KB。位置情報を確認中…`;
-    try {
-      const gps = await exifr.gps(f);
-      const meta = await exifr.parse(f, ["DateTimeOriginal", "GPSAltitude", "GPSAltitudeRef"]);
-      if (meta && meta.DateTimeOriginal instanceof Date && !isNaN(meta.DateTimeOriginal)) observedAt = meta.DateTimeOriginal;
-      if (meta && Number.isFinite(meta.GPSAltitude)) {
-        const below = meta.GPSAltitudeRef === 1 || /below/i.test(String(meta.GPSAltitudeRef ?? ""));
-        altitude = below ? -meta.GPSAltitude : meta.GPSAltitude;
-      }
-      if (gps && Number.isFinite(gps.latitude) && Number.isFinite(gps.longitude)) {
-        setPick(L.latLng(gps.latitude, gps.longitude));
-        map.setView(picked, Math.max(map.getZoom(), 15));
-        photoInfo.textContent = "写真の位置情報を読み取り、地図に反映しました（違う場合は地図をクリックして修正できます）" + (observedAt ? "。撮影日時も反映します" : "");
-        exifText.value = [`緯度 ${gps.latitude.toFixed(6)}`, `経度 ${gps.longitude.toFixed(6)}`,
-          altitude !== null ? `標高 ${altitude.toFixed(1)} m` : "標高 （なし）", observedAt ? `撮影日 ${fmtDate(observedAt)}` : "撮影日 （なし）"].join("\n");
-      } else {
-        photoInfo.textContent = "【原因B】この写真ファイルには位置情報が入っていません（写真アプリから選ぶと位置が外れることがあります）。地図をクリックして位置を選んでください" + (observedAt ? "（撮影日時は反映します）" : "");
-      }
-    } catch (e) {
-      console.error("EXIF読み取りエラー", e);
-      photoInfo.textContent = "【原因C】読み取り中にエラー: " + (e && e.message ? e.message : e) + "。地図をクリックして位置を選んでください";
+    // 位置・日時/標高は別々に読む（片方が失敗しても、もう片方は使う）
+    let gps = null, meta = null, errGps = null, errMeta = null;
+    try { gps = await exifr.gps(f); } catch (e) { errGps = e; console.error("exifr.gps 失敗", e); }
+    try { meta = await exifr.parse(f, { tiff: true, exif: true, gps: true }); } catch (e) { errMeta = e; console.error("exifr.parse 失敗", e); }
+    if (!(gps && Number.isFinite(gps.latitude)) && meta && Number.isFinite(meta.latitude) && Number.isFinite(meta.longitude)) {
+      gps = { latitude: meta.latitude, longitude: meta.longitude };  // parse の結果から補う
+    }
+    if (meta && meta.DateTimeOriginal instanceof Date && !isNaN(meta.DateTimeOriginal)) observedAt = meta.DateTimeOriginal;
+    if (meta && Number.isFinite(meta.GPSAltitude)) {
+      const below = meta.GPSAltitudeRef === 1 || /below/i.test(String(meta.GPSAltitudeRef ?? ""));
+      altitude = below ? -meta.GPSAltitude : meta.GPSAltitude;
+    }
+    if (gps && Number.isFinite(gps.latitude) && Number.isFinite(gps.longitude)) {
+      setPick(L.latLng(gps.latitude, gps.longitude));
+      map.setView(picked, Math.max(map.getZoom(), 15));
+      photoInfo.textContent = "写真の位置情報を読み取り、地図に反映しました（違う場合は地図をクリックして修正できます）" + (observedAt ? "。撮影日時も反映します" : "");
+      exifText.value = [`緯度 ${gps.latitude.toFixed(6)}`, `経度 ${gps.longitude.toFixed(6)}`,
+        altitude !== null ? `標高 ${altitude.toFixed(1)} m` : "標高 （なし）", observedAt ? `撮影日 ${fmtDate(observedAt)}` : "撮影日 （なし）"].join("\n");
+    } else if (errGps && errMeta) {
+      photoInfo.textContent = `【原因C】読み取りに失敗（形式: ${f.type || "不明"}）。gps: ${errGps.message} / parse: ${errMeta.message}。地図をクリックして位置を選んでください`;
+    } else {
+      photoInfo.textContent = "【原因B】この写真ファイルには位置情報が入っていません（写真アプリから選ぶと位置が外れることがあります）。地図をクリックして位置を選んでください"
+        + (observedAt ? "（撮影日時は反映します）" : "") + (errGps || errMeta ? `（一部の読み取りに失敗: ${(errGps || errMeta).message}）` : "");
     }
   };
 }
