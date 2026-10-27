@@ -9,3 +9,6 @@ node_modules/
 .DS_Store
 # 手元用データ（個人の座標・申請者情報を含み得る）
 local/
+
+# 接続設定（雛形は web/config.example.js）
+web/config.js
