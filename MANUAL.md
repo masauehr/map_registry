@@ -1,6 +1,6 @@
 # map_registry — 許可制・承認制の地図登録システム
 
-状態: Phase1 実装済み（Supabase＋最小フロント、動作確認済み） ／ 作成: 2026-10-27
+状態: Phase1 完了（申請→承認→招待→投稿→公開まで動作確認済み） ／ 作成: 2026-10-27
 
 ## 概要
 lichens の地図公開の仕組みを、許可された複数人が登録できる形に拡張する構想。閲覧は誰でも、登録は招待制、公開は管理者の承認後。
@@ -29,3 +29,15 @@ Supabase（認証・DB・画像・行単位権限）＋ Leaflet 静的フロン�
 - 使い方: `cd web && python3 -m http.server 8000`。Safari のリーダー表示では動かない（再読み込みは ⌘+Option+R）。
 - 学び: RLSポリシー内で非公開テーブルを直接参照すると anon が権限エラーになる→security definer関数に切り出す。検証SQL（`tests/0001_rls_check.sql`）で発見。
 - 未実装: Turnstile、招待の自動化、写真アップロード（Phase2）。
+
+## Phase1 完了（2026-10-27）— 申請→招待まで
+- 申請は Edge Function `apply` 経由（Turnstile検証・重複防止）。承認は `approve-application`（管理者のみ、招待メール送信＋members登録）。0004で匿名の直接insertを禁止。
+- 招待メールのリンクから来るとパスワード設定画面が出る。
+- 動作確認: 申請→承認→招待メール受信→パスワード設定→投稿→承認→公開まで通った。
+- 学び（つまずき）:
+  - 「Automatically expose new tables」OFF だと service_role にも権限が付かない→0005で付与。
+  - Safari のリーダー表示・キャッシュでJSが動かない（再読み込みは ⌘+Option+R）。
+  - 新しい公開キー（sb_publishable_…）はJWTではないため、Edge Functionの Verify JWT は OFF にして関数内で認証。
+  - Supabase標準メールはチーム宛にしか届かない→第三者招待には独自SMTPが必要。
+  - 文書やHTMLを書き換えるスクリプトは「読み込み→書き込み」を分ける（同じ式で開くとファイルが空になる）。
+- 未実装: 本番Turnstileキー・独自SMTP・写真アップロード（Phase2）・GitHub Pages公開。

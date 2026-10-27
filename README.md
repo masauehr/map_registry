@@ -2,7 +2,7 @@
 
 詳しくは [MANUAL.md](MANUAL.md) も参照。
 
-状態: **Phase1 実装済み（Supabase＋最小フロント、動作確認済み）** ／ 作成: 2026-10-27 ／ 詳しくは [docs/research_wajima_dx.md](docs/research_wajima_dx.md)・[docs/design.md](docs/design.md)・[docs/security.md](docs/security.md) を参照。
+状態: **Phase1 完了（申請→承認→招待→パスワード設定→投稿→承認→公開まで動作確認済み）** ／ 作成: 2026-10-27 ／ 詳しくは [docs/research_wajima_dx.md](docs/research_wajima_dx.md)・[docs/design.md](docs/design.md)・[docs/security.md](docs/security.md) を参照。
 
 ## 目的
 [lichens](../lichens/) の「地図にデータを登録して公開する」仕組みを、**許可された複数人が登録できる形**に広げる。閲覧は誰でも、登録は招待制、公開は管理者の承認後。災害時の情報共有（輪島市の例）にも応用できる設計を目指す。
@@ -35,10 +35,12 @@ Supabase（認証・DB・画像・行単位権限）＋ Leaflet 静的フロン�
    - Safari のリーダー表示では動かない。再読み込みは ⌘+Option+R。
 
 ## 実装済み（Phase1）
-地図表示（国土地理院）／登録申請／ログイン／投稿（カテゴリ別の追加項目・位置ぼかし）／管理者の承認・却下。未ログインは承認済みのみ閲覧。RLS検証済み。
+地図表示（国土地理院）／登録申請（Turnstile＋Edge Function）／招待メール自動送信／パスワード設定／ログイン／投稿（カテゴリ別の追加項目・位置ぼかし）／管理者の承認・却下。未ログインは承認済みのみ閲覧。RLS検証済み。
+
+SQLは0001〜0005、Edge Functionは `supabase/functions/`（デプロイ手順は [supabase/README.md](supabase/README.md)）。
 
 ## 次のステップ
-1. 公開前: 申請フォームのボット対策（Turnstile）、招待メール自動化（Edge Function）
+1. 公開前: Turnstile を本番キーに差し替え、独自SMTP（第三者への招待に必須）、GitHub Pages公開時のキーの渡し方・ALLOWED_ORIGINS・Site URL
 2. Phase2: 写真アップロード（EXIF除去・縮小）、`?probe=1` 相当
 3. 地衣類カテゴリの本格対応 → 防災カテゴリ
 4. 防災クロスビュー等の利用規約確認
