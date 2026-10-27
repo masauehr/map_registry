@@ -25,5 +25,10 @@
 4. 少数で試す: `... --limit 20 --apply` → 地図に20件出ることを確認。
 5. 全件: `... --apply`（数分）。やり直したい場合は SQL で `delete from points where extra->>'source' = 'lichens';` ＋ Storage の `import/lichens/` を削除。
 
+### 自宅周辺として除外されていた写真をぼかして登録する
+- `--local-src ../lichens/map_local` を付けると、`map_public` に無い写真（＝自宅周辺として除外された分、829件）だけを追加登録する。**自宅の座標はスクリプトにも引数にも不要**（map_local と map_public の差集合で判定）。
+- 除外分は必ずぼかす（`--excluded-blur-m`、1〜10000m、既定1000）。公開されるのはぼかし後の位置のみで、正確な位置は `point_private`（本人と管理者のみ）に入る。固定格子の中心に寄せるため、約30m四方に集中していた829件は1つの点にまとまる。
+- 写真の扱い: `--excluded-photos none`（写真なし・既定）／`main_maybe`（接写のみ。contextの全景は写真なし）／`all`。全景には家や庭が写る可能性がある。
+
 ### 公開に関する確認
 lichens の公開地図（GitHub Pages）と同じデータ・同じ除外範囲。map_registry では誰でも閲覧できるため、取り込み前に枚数と除外の検証結果をユーザーに示して確認を取る。
