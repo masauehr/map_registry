@@ -1,0 +1,42 @@
+# web/ を GitHub Pages に公開する。
+# web/config.js は Git 管理外のため、リポジトリの Actions 変数（公開しても良い値）から生成する。
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: config.js を生成
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+        run: |
+          test -n "$SUPABASE_URL" && test -n "$SUPABASE_PUBLISHABLE_KEY" && test -n "$TURNSTILE_SITE_KEY"
+          printf 'window.MAP_CONFIG = {\n  url: "%s",\n  anonKey: "%s",\n  turnstileSiteKey: "%s"\n};\n' \
+            "$SUPABASE_URL" "$SUPABASE_PUBLISHABLE_KEY" "$TURNSTILE_SITE_KEY" > web/config.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4
