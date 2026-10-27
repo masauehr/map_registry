@@ -8,7 +8,7 @@
 - リポジトリは公開（masauehr/map_registry）。秘密情報はコミットしない。
 
 ## 状態
-Phase0（調査・設計のみ）。コードは未着手。
+Phase1 実装済み（supabase/ のSQL3本＋web/ の最小フロント）。`web/config.js` はGit管理外（雛形は config.example.js）。
 
 ## ルール
 - 詳細は `README.md` と `docs/`（research_wajima_dx.md／design.md／security.md）。
