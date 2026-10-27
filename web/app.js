@@ -162,7 +162,9 @@ function showPostPanel() {
   const blur = el("select", {}, ...[[0, "ぼかさない"], [500, "約500m"], [1000, "約1km"], [5000, "約5km"]]
     .map(([v, t]) => el("option", { value: v, textContent: t })));
   const extraBox = el("div");
-  const photoIn = el("input", { type: "file", accept: "image/jpeg,image/png,image/webp" });
+  const photoIn = el("input", { type: "file", accept: "image/jpeg,image/png,image/webp,image/heic" });
+  const photoInfo = el("div", { style: "font-size:12px;color:#555" });
+  let observedAt = null;  // 写真の撮影日時（EXIFにあれば）
   const pos = el("div", { textContent: "地図をクリックして位置を選んでください" });
   const out = el("div");
   const renderExtra = () => {
@@ -190,24 +192,47 @@ function showPostPanel() {
     }
     const { error } = await sb.rpc("submit_point", {
       p_category: cat.value, p_lng: picked.lng, p_lat: picked.lat, p_note: note.value,
-      p_photo_path: photoPath, p_extra: extra, p_blur_m: Number(blur.value) });
+      p_photo_path: photoPath, p_extra: extra, p_blur_m: Number(blur.value),
+      ...(observedAt ? { p_observed_at: observedAt.toISOString() } : {}) });
     if (error) { out.replaceChildren(msg("投稿できませんでした: " + error.message)); return; }
     out.replaceChildren(msg("投稿しました（承認後に公開されます）", true));
-    note.value = ""; photoIn.value = ""; await loadPoints();
+    note.value = ""; photoIn.value = ""; observedAt = null; photoInfo.textContent = ""; await loadPoints();
   };
   const nodes = [el("h3", { textContent: "地点を登録" }), el("label", { textContent: "カテゴリ" }), cat,
     el("label", { textContent: "メモ" }), note, extraBox,
-    el("label", { textContent: "写真（任意・位置情報は自動で削除）" }), photoIn, el("label", { textContent: "公開位置のぼかし" }), blur,
+    el("label", { textContent: "写真（任意・位置情報は自動で削除）" }), photoIn, photoInfo, el("label", { textContent: "公開位置のぼかし" }), blur,
     pos, el("p", {}, go), out];
   if (me.member.role === "admin") nodes.push(el("hr"), el("button", { textContent: "承認待ちを確認", onclick: adminPanel }));
   showPanel(...nodes);
   map.off("click", onPick); map.on("click", onPick);
-  function onPick(e) {
-    picked = e.latlng;
+  function setPick(ll) {
+    picked = ll;
     if (pickMarker) pickMarker.remove();
     pickMarker = L.marker(picked).addTo(map);
     pos.textContent = `選択位置: ${picked.lat.toFixed(5)}, ${picked.lng.toFixed(5)}（正確な位置は管理者と本人のみ）`;
   }
+  function onPick(e) { setPick(e.latlng); }
+
+  // 写真を選んだら、EXIFの位置と撮影日時をブラウザ内で読み取り、地図に反映する（写真自体は送信しない）
+  photoIn.onchange = async () => {
+    observedAt = null; photoInfo.textContent = "";
+    const f = photoIn.files[0];
+    if (!f) return;
+    try {
+      const gps = await exifr.gps(f);
+      const meta = await exifr.parse(f, ["DateTimeOriginal"]);
+      if (meta && meta.DateTimeOriginal instanceof Date && !isNaN(meta.DateTimeOriginal)) observedAt = meta.DateTimeOriginal;
+      if (gps && Number.isFinite(gps.latitude) && Number.isFinite(gps.longitude)) {
+        setPick(L.latLng(gps.latitude, gps.longitude));
+        map.setView(picked, Math.max(map.getZoom(), 15));
+        photoInfo.textContent = "写真の位置情報を読み取り、地図に反映しました（違う場合は地図をクリックして修正できます）" + (observedAt ? "。撮影日時も反映します" : "");
+      } else {
+        photoInfo.textContent = "この写真には位置情報がありません。地図をクリックして位置を選んでください" + (observedAt ? "（撮影日時は反映します）" : "");
+      }
+    } catch (e) {
+      photoInfo.textContent = "写真の位置情報を読み取れませんでした。地図をクリックして位置を選んでください";
+    }
+  };
 }
 
 async function adminPanel() {
