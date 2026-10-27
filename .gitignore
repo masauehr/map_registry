@@ -1,0 +1,11 @@
+# 秘密情報・環境
+.env
+.env.*
+*.pem
+*.key
+# 環境・生成物
+.venv/
+node_modules/
+.DS_Store
+# 手元用データ（個人の座標・申請者情報を含み得る）
+local/
