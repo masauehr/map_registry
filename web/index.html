@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>map_registry</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>map_registry</h1>
+    <label>カテゴリ <select id="filter"><option value="">すべて</option></select></label>
+    <span id="who"></span>
+    <button id="btnLogin">ログイン</button>
+    <button id="btnApply">登録申請</button>
+  </header>
+  <main>
+    <div id="map"></div>
+    <aside id="panel" hidden></aside>
+  </main>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js?v=5"></script>
+</body>
+</html>
