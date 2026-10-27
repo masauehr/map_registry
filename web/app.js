@@ -9,6 +9,7 @@ if (!cfg.url || !cfg.anonKey) {
   throw new Error("config 未設定");
 }
 const sb = supabase.createClient(cfg.url, cfg.anonKey);
+let inviteFlow = /type=(invite|recovery)/.test(location.hash);  // 招待メールのリンクから来たか
 
 // 地図（国土地理院 淡色地図）
 const map = L.map("map").setView([36.5, 138], 5);
@@ -67,6 +68,7 @@ async function refreshMe() {
   }
   whoEl.textContent = me ? (me.member ? `${me.member.display_name}（${me.member.role}）` : "登録者ではありません") : "";
   document.getElementById("btnLogin").textContent = me ? "ログアウト" : "ログイン";
+  if (me && inviteFlow) { setPasswordPanel(); return; }
   if (me && me.member && me.member.active) showPostPanel(); else if (!me) hidePanel();
 }
 
@@ -84,21 +86,59 @@ function loginPanel() {
     el("label", { textContent: "パスワード" }), pw, el("p", {}, go), out);
 }
 
+let tsScript = null;  // Turnstile のスクリプトを1回だけ読み込む
+const loadTurnstile = () => tsScript ||= new Promise((ok, ng) => {
+  const sc = el("script", { src: "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit", async: true });
+  sc.onload = ok; sc.onerror = ng; document.head.append(sc);
+});
+
 function applyPanel() {
   const name = el("input", { maxLength: 50 });
   const email = el("input", { type: "email", maxLength: 200 });
   const purpose = el("textarea", { rows: 4, maxLength: 500 });
+  const widget = el("div");
   const out = el("div");
   const go = el("button", { textContent: "申請する" });
+  let token = "";
   go.onclick = async () => {
-    const { error } = await sb.from("applications").insert({
-      display_name: name.value.trim(), email: email.value.trim(), purpose: purpose.value.trim() });
-    out.replaceChildren(error ? msg("送信できませんでした。入力内容を確認してください") : msg("申請を受け付けました。承認後に連絡します", true));
+    if (!token) { out.replaceChildren(msg("「ロボットではありません」の確認を完了してください")); return; }
+    go.disabled = true;
+    try {
+      const res = await fetch(`${cfg.url}/functions/v1/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: cfg.anonKey },
+        body: JSON.stringify({ display_name: name.value.trim(), email: email.value.trim(),
+          purpose: purpose.value.trim(), turnstile_token: token })
+      });
+      const j = await res.json().catch(() => ({}));
+      out.replaceChildren(res.ok ? msg("申請を受け付けました。承認後に招待メールが届きます", true) : msg(j.error || "送信できませんでした"));
+      if (!res.ok && window.turnstile) window.turnstile.reset();
+    } catch (e) { out.replaceChildren(msg("通信に失敗しました")); }
+    go.disabled = false;
   };
   showPanel(el("h3", { textContent: "登録申請" }),
     el("p", { textContent: "投稿するには管理者の承認が必要です。連絡先は公開されません。" }),
     el("label", { textContent: "表示名" }), name, el("label", { textContent: "連絡先メール" }), email,
-    el("label", { textContent: "利用目的" }), purpose, el("p", {}, go), out);
+    el("label", { textContent: "利用目的" }), purpose, widget, el("p", {}, go), out);
+  loadTurnstile().then(() => window.turnstile.render(widget, {
+    sitekey: cfg.turnstileSiteKey, callback: t => { token = t; }, "expired-callback": () => { token = ""; } }))
+    .catch(() => out.replaceChildren(msg("ボット確認を読み込めませんでした")));
+}
+
+// 招待メールのリンクから来たユーザーにパスワードを設定させる
+function setPasswordPanel() {
+  const pw = el("input", { type: "password", autocomplete: "new-password", minLength: 12 });
+  const out = el("div");
+  const go = el("button", { textContent: "パスワードを設定" });
+  go.onclick = async () => {
+    if (pw.value.length < 12) { out.replaceChildren(msg("12文字以上にしてください")); return; }
+    const { error } = await sb.auth.updateUser({ password: pw.value });
+    if (error) { out.replaceChildren(msg("設定できませんでした: " + error.message)); return; }
+    inviteFlow = false; history.replaceState(null, "", location.pathname);
+    await refreshMe();
+  };
+  showPanel(el("h3", { textContent: "ようこそ" }), el("p", { textContent: "ログイン用のパスワードを設定してください（12文字以上）。" }),
+    el("label", { textContent: "新しいパスワード" }), pw, el("p", {}, go), out);
 }
 
 function showPostPanel() {
@@ -152,6 +192,17 @@ async function adminPanel() {
     try { await doAct(table, id, status); } catch (e) { console.error(e); panel.prepend(msg("例外: " + e.message)); }
   };
   const doAct = async (table, id, status) => {
+    if (table === "applications") {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(`${cfg.url}/functions/v1/approve-application`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: cfg.anonKey, Authorization: "Bearer " + session.access_token },
+        body: JSON.stringify({ application_id: id, action: status === "approved" ? "approve" : "reject" })
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { panel.prepend(msg("失敗: " + (j.error || res.status))); return; }
+      adminPanel(); return;
+    }
     const { data, error } = await sb.from(table)
       .update(table === "points" ? { status } : { status, reviewed_at: new Date().toISOString(), reviewed_by: me.user.id })
       .eq("id", id).select("id");
@@ -170,7 +221,7 @@ async function adminPanel() {
   showPanel(el("h3", { textContent: "承認待ちの地点" }),
     ...list(pts, "points", r => `${r.category_id}: ${r.note}`),
     el("h3", { textContent: "登録申請" }),
-    el("p", { textContent: "承認後、Authentication で招待し members に追加します（手動）。" }),
+    el("p", { textContent: "承認すると招待メールが送られ、メンバーに登録されます。" }),
     ...list(apps, "applications", r => `${r.display_name}: ${r.purpose}`),
     el("button", { textContent: "戻る", onclick: showPostPanel }));
 }
