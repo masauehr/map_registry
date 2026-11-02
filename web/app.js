@@ -122,7 +122,10 @@ async function loadPoints() {
       ? { radius: 8, color, weight: 2, dashArray: "3 3", fillColor: "#fff", fillOpacity: 0.5, bubblingMouseEvents: false }
       : { radius: 7, color, fillOpacity: 0.7, bubblingMouseEvents: false });
     // ポップアップの中身は開いたときに作る（件数が多くても軽くする。画像もこの時点で初めて読み込まれる）
+    // popup.update() は内容を作る関数をもう一度呼ぶ。毎回作り直すと「標高取得→update→作り直し…」が無限に続くため、1回だけ作って使い回す
+    let cachedBody = null;
     m.bindPopup(() => {
+      if (cachedBody) return cachedBody;
       const cat = categories.find(c => c.id === p.category_id);
       const photo = p.photo_path ? el("img", { src: photoUrl(p.photo_path), alt: "", style: "max-width:220px;max-height:220px;display:block;margin:4px 0" }) : "";
       const elevEl = el("div", { textContent: "標高 取得中…" });
@@ -136,13 +139,13 @@ async function loadPoints() {
       setWarn(undefined);
       const estEl = x[LOC_KEY] === "推定" ? el("div", { textContent: "位置は撮影時刻などから推定した値です", style: "color:#666;font-size:12px" }) : "";
       getElevation(p.lat, p.lng).then(v => { elevEl.textContent = fmtElev(v); setWarn(v); m.getPopup() && m.getPopup().update(); });
-      return el("div", {},
+      return (cachedBody = el("div", {},
         el("b", { textContent: (cat ? cat.name : p.category_id) + (p.status === "approved" ? "" : "（未承認）") }),
         el("div", { textContent: new Date(p.observed_at).toLocaleString("ja-JP") }),
         photo,
         el("div", { textContent: p.note }),
         el("div", { textContent: Object.entries(x).filter(([k]) => k !== LOC_KEY && k !== LOC_NOTE).map(([k, v]) => `${k}: ${v}`).join(" / ") }),
-        elevEl, warnEl, estEl);
+        elevEl, warnEl, estEl));
     });
     return m;
   });
