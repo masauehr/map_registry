@@ -41,6 +41,8 @@ SQLは0001〜0005、Edge Functionは `supabase/functions/`（デプロイ手順�
 
 **公開URL: https://masauehr.github.io/map_registry/** ／ 中断時点の状態と再開手順は [docs/resume.md](docs/resume.md)
 
+背景地図は切り替え可能（色別標高図・陰影起伏図を含む地理院タイル）。地図クリック・点のポップアップに標高を表示（地理院の標高API）。
+
 ## Phase2（写真・一括取り込み）
 詳細は [docs/phase2_photos_import.md](docs/phase2_photos_import.md)。写真アップロード（EXIF除去・縮小）と、lichens 公開データの一括取り込みツール（`tools/import_lichens.py`）。
 

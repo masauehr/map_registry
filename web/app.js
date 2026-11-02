@@ -11,12 +11,46 @@ if (!cfg.url || !cfg.anonKey) {
 const sb = supabase.createClient(cfg.url, cfg.anonKey);
 let inviteFlow = /type=(invite|recovery)/.test(location.hash);  // 招待メールのリンクから来たか
 
-// 地図（国土地理院 淡色地図）
-const map = L.map("map").setView([36.5, 138], 5);
-L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", {
-  attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>', maxZoom: 18
-}).addTo(map);
+// 地図: 背景を切り替えられる（国土地理院タイル中心。標高がわかる色別標高図・陰影起伏図を含む）
+const gsiAttr = '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>';
+const gsi = (name, ext, opt) => L.tileLayer(`https://cyberjapandata.gsi.go.jp/xyz/${name}/{z}/{x}/{y}.${ext}`, { attribution: gsiAttr, ...opt });
+const baseLayers = {
+  "淡色地図（地理院）": gsi("pale", "png", { maxZoom: 18 }),
+  "標準地図（地理院）": gsi("std", "png", { maxZoom: 18 }),
+  "航空写真（地理院）": gsi("seamlessphoto", "jpg", { maxZoom: 19 }),
+  "色別標高図（地理院）": gsi("relief", "png", { maxNativeZoom: 15, maxZoom: 19 }),
+  "陰影起伏図（地理院）": gsi("hillshademap", "png", { maxNativeZoom: 16, maxZoom: 19 }),
+  "OpenStreetMap": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 }),
+};
+// 背景に重ねて地形の凹凸を見せる（半透明）
+const overlayLayers = {
+  "陰影起伏図を重ねる（半透明）": gsi("hillshademap", "png", { maxNativeZoom: 16, maxZoom: 19, opacity: 0.45 }),
+};
+const map = L.map("map", { layers: [baseLayers["淡色地図（地理院）"]] }).setView([36.5, 138], 5);
+L.control.layers(baseLayers, overlayLayers).addTo(map);
 const layer = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 50 }).addTo(map);  // 多数の点をまとめて表示
+
+// 標高（国土地理院の標高API。日本国内のみ。同じ地点は再取得しない）
+const elevCache = new Map();
+function getElevation(lat, lng) {
+  const key = lat.toFixed(5) + "," + lng.toFixed(5);
+  if (!elevCache.has(key)) {
+    elevCache.set(key, fetch(`https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php?lon=${lng}&lat=${lat}&outtype=JSON`)
+      .then(r => r.json()).then(j => (typeof j.elevation === "number" ? j.elevation : null)).catch(() => null));
+  }
+  return elevCache.get(key);
+}
+const fmtElev = v => (v === null ? "標高 データなし（海上・範囲外など）" : `標高 ${v.toFixed(1)} m`);
+let picking = false;  // 投稿パネルで位置を選んでいる間は、地図クリックを位置選択に使う
+
+// 地図をクリックすると、その地点の緯度・経度・標高を表示する（投稿の位置選択中を除く。点・クラスタのクリックは対象外）
+map.on("click", async e => {
+  if (picking) return;
+  const { lat, lng } = e.latlng;
+  const body = t => `緯度 ${lat.toFixed(5)}<br>経度 ${lng.toFixed(5)}<br>${t}`;
+  const pop = L.popup().setLatLng(e.latlng).setContent(body("標高 取得中…")).openOn(map);
+  pop.setContent(body(fmtElev(await getElevation(lat, lng))));
+});
 
 let me = null;          // { user, member }
 let categories = [];
@@ -28,8 +62,8 @@ const el = (tag, props = {}, ...kids) => {
   kids.forEach(k => e.append(k));
   return e;
 };
-const showPanel = (...nodes) => { panel.replaceChildren(...nodes); panel.hidden = false; map.invalidateSize(); };
-const hidePanel = () => { panel.hidden = true; map.invalidateSize(); };
+const showPanel = (...nodes) => { picking = false; panel.replaceChildren(...nodes); panel.hidden = false; map.invalidateSize(); };
+const hidePanel = () => { picking = false; panel.hidden = true; map.invalidateSize(); };
 const msg = (text, ok) => el("div", { className: "msg" + (ok ? " ok" : ""), textContent: text });
 
 const photoUrl = path => `${cfg.url}/storage/v1/object/public/photos/${path.split("/").map(encodeURIComponent).join("/")}`;
@@ -80,17 +114,20 @@ async function loadPoints() {
   const data = await fetchAllPoints();
   const markers = data.map(p => {
     const color = p.status === "approved" ? "#1f77b4" : "#e67e22";
-    const m = L.circleMarker([p.lat, p.lng], { radius: 7, color, fillOpacity: 0.7 });
+    const m = L.circleMarker([p.lat, p.lng], { radius: 7, color, fillOpacity: 0.7, bubblingMouseEvents: false });
     // ポップアップの中身は開いたときに作る（件数が多くても軽くする。画像もこの時点で初めて読み込まれる）
     m.bindPopup(() => {
       const cat = categories.find(c => c.id === p.category_id);
       const photo = p.photo_path ? el("img", { src: photoUrl(p.photo_path), alt: "", style: "max-width:220px;max-height:220px;display:block;margin:4px 0" }) : "";
+      const elevEl = el("div", { textContent: "標高 取得中…" });
+      getElevation(p.lat, p.lng).then(v => { elevEl.textContent = fmtElev(v); m.getPopup() && m.getPopup().update(); });
       return el("div", {},
         el("b", { textContent: (cat ? cat.name : p.category_id) + (p.status === "approved" ? "" : "（未承認）") }),
         el("div", { textContent: new Date(p.observed_at).toLocaleString("ja-JP") }),
         photo,
         el("div", { textContent: p.note }),
-        el("div", { textContent: Object.entries(p.extra || {}).map(([k, v]) => `${k}: ${v}`).join(" / ") }));
+        el("div", { textContent: Object.entries(p.extra || {}).map(([k, v]) => `${k}: ${v}`).join(" / ") }),
+        elevEl);
     });
     return m;
   });
@@ -252,12 +289,14 @@ function showPostPanel() {
     pos, el("p", {}, go), out];
   if (me.member.role === "admin") nodes.push(el("hr"), el("button", { textContent: "承認待ちを確認", onclick: adminPanel }));
   showPanel(...nodes);
+  picking = true;
   map.off("click", onPick); map.on("click", onPick);
   function setPick(ll) {
     picked = ll;
     if (pickMarker) pickMarker.remove();
     pickMarker = L.marker(picked).addTo(map);
     pos.textContent = `選択位置: ${picked.lat.toFixed(5)}, ${picked.lng.toFixed(5)}（正確な位置は管理者と本人のみ）`;
+    getElevation(ll.lat, ll.lng).then(v => { if (picked === ll) pos.textContent += `　${fmtElev(v)}`; });
   }
   function onPick(e) { setPick(e.latlng); }
 
