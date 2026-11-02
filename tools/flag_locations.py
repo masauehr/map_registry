@@ -43,6 +43,28 @@ def elevation(k):
     return k, "ERR"
 
 
+def check_key(url, key):
+    """書き込み前にキーを確認する（キーの値は表示しない）。無効なら理由の候補を出して終了する。"""
+    problems = []
+    if not key.startswith(("sb_secret_", "eyJ")):
+        problems.append("Secret key（sb_secret_ で始まる）ではない可能性があります（公開用キーは使えません）")
+    if any(c in key for c in "•*…") or any(c.isspace() for c in key) or len(key) < 30:
+        problems.append("伏せ字（••••）のままコピーした／空白が混じった／途中で切れた可能性があります（目のマークで表示してからコピー）")
+    h = {"apikey": key}
+    if key.startswith("eyJ"):
+        h["Authorization"] = "Bearer " + key
+    try:
+        urllib.request.urlopen(urllib.request.Request(f"{url}/rest/v1/points?select=id&limit=1", headers=h), timeout=30).read()
+    except urllib.error.HTTPError as e:
+        print(f"キーの確認に失敗しました（HTTP {e.code}）。")
+        for p in problems:
+            print("  ・" + p)
+        print("  ・.env の行は SUPABASE_SECRET_KEY=キー（空白・引用符なし）／別プロジェクトのキーではないか確認してください")
+        sys.exit(1)
+    except Exception as e:
+        sys.exit(f"接続に失敗しました: {e}")
+
+
 def patch(url, key, pid, extra):
     h = {"apikey": key, "Content-Type": "application/json", "Prefer": "return=minimal"}
     if key.startswith("eyJ"):
@@ -108,6 +130,7 @@ def main():
     if not (url and key):
         sys.exit(".env に SUPABASE_URL / SUPABASE_SECRET_KEY を設定してください（一時的なキー。終わったら削除）")
 
+    check_key(url, key)  # 無効なキーなら、大量の更新の前にここで止める
     kind_of = {r["id"]: r["kind"] for r in rows}
 
     def work(item):

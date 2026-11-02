@@ -52,6 +52,28 @@ def request(method, url, key, body=None, extra=None):
         raise RuntimeError(f"{method} {url.split('/v1/')[-1][:40]} -> {e.code} {e.read().decode()[:200]}")
 
 
+def check_key(url, key):
+    """書き込み前にキーを確認する（キーの値は表示しない）。無効なら理由の候補を出して終了する。"""
+    problems = []
+    if not key.startswith(("sb_secret_", "eyJ")):
+        problems.append("Secret key（sb_secret_ で始まる）ではない可能性があります（公開用キーは使えません）")
+    if any(c in key for c in "•*…") or any(c.isspace() for c in key) or len(key) < 30:
+        problems.append("伏せ字（••••）のままコピーした／空白が混じった／途中で切れた可能性があります（目のマークで表示してからコピー）")
+    h = {"apikey": key}
+    if key.startswith("eyJ"):
+        h["Authorization"] = "Bearer " + key
+    try:
+        urllib.request.urlopen(urllib.request.Request(f"{url}/rest/v1/points?select=id&limit=1", headers=h), timeout=30).read()
+    except urllib.error.HTTPError as e:
+        print(f"キーの確認に失敗しました（HTTP {e.code}）。")
+        for p in problems:
+            print("  ・" + p)
+        print("  ・.env の行は SUPABASE_SECRET_KEY=キー（空白・引用符なし）／別プロジェクトのキーではないか確認してください")
+        sys.exit(1)
+    except Exception as e:
+        sys.exit(f"接続に失敗しました: {e}")
+
+
 def photo_name(r):
     """Storage のファイル名。安全な文字だけの id はそのまま（既存のアップロードと互換）、
     スペース・括弧などを含む id は、記号を _ にして短いハッシュを付ける（衝突防止）。"""
@@ -129,6 +151,7 @@ def main():
     if not (url and key and uid):
         sys.exit(".env に SUPABASE_URL / SUPABASE_SECRET_KEY / IMPORT_USER_ID を設定してください")
 
+    check_key(url, key)  # 無効なキーなら、アップロードの前にここで止める
     # 1) サムネイルをアップロード（import/lichens/<id>.jpg。再実行は上書き）
     def upload(it):
         r, d = it[0], it[1]
