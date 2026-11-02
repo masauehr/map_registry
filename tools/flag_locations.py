@@ -2,6 +2,9 @@
 """登録済みの lichens の点に、位置の信頼度（要確認／推定）を付ける。
 
 - 元データ（lichens の photos.json）の est（推定位置）と note（同じ日の写真の近く・人が判断した暫定位置）から判定。
+- --est-loc に lichens の work/est_loc.json を渡すと、推定の方法（補間・最寄り・引き継ぎ・同日・手動）と時間差で細かく判定:
+    要確認 = 同日／手動、または 引き継ぎ で時間差が --carry-warn-sec を超えるもの（既定2時間）、海上
+    推定   = 補間・最寄り・時間差の小さい引き継ぎ。extra に 位置方法・位置時間差(分) を記録（ポップアップに表示）
 - --check-sea を付けると、推定位置のうち「標高データなし（海上・範囲外）」の地点を、国土地理院の標高APIで調べて「要確認（海上）」にする。
 - 既定はドライラン（何も書き込まない）。実行は --apply。座標は表示しない（件数・撮影日のみ）。
 - 書き込みは points.extra のみ（位置・写真は変えない）。extra は丸ごと置き換えるため、source / kind / 位置 / 位置メモ を入れ直す。
@@ -84,6 +87,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", required=True, help="lichens の map_local（全件）または map_public")
     ap.add_argument("--check-sea", action="store_true", help="推定位置の海上チェック（地理院の標高API）")
+    ap.add_argument("--est-loc", help="lichens の work/est_loc.json（推定の方法・時間差。あれば判定が細かくなる）")
+    ap.add_argument("--carry-warn-sec", type=int, default=7200, help="引き継ぎで、この秒数を超える時間差は要確認（既定7200=2時間）")
     ap.add_argument("--apply", action="store_true")
     a = ap.parse_args()
 
@@ -93,12 +98,30 @@ def main():
     rows = [r for r in json.loads((src / "photos.json").read_text(encoding="utf-8")) if r.get("lat") is not None]
 
     # 1) 元データの印から判定
-    flags = {}  # id -> (位置, 位置メモ or None)
+    METHOD = {"interp": "補間", "nearest": "最寄り", "carry": "引き継ぎ", "sameday": "同日", "manual": "手動"}
+    est_loc = json.loads(Path(a.est_loc).read_text(encoding="utf-8")) if a.est_loc else {}
+    flags = {}  # id -> 追加する extra の項目（位置・位置メモ・位置方法・位置時間差(分)）
+    reason = Counter()
     for r in rows:
-        if r.get("note"):
-            flags[r["id"]] = ("要確認", r["note"])
-        elif r.get("est"):
-            flags[r["id"]] = ("推定", None)
+        e = est_loc.get(r["id"], {})
+        method, gap = e.get("method"), e.get("gap")
+        if not (r.get("note") or r.get("est") or e):
+            continue
+        info = {}
+        if method in METHOD:
+            info["位置方法"] = METHOD[method]
+        if gap is not None:
+            info["位置時間差(分)"] = round(gap / 60)
+        if method in ("sameday", "manual") or r.get("note"):
+            info["位置"], info["位置メモ"] = "要確認", r.get("note") or e.get("note") or "人が判断した暫定位置"
+            reason["同日・手動（note付き）"] += 1
+        elif method == "carry" and gap is not None and gap > a.carry_warn_sec:
+            info["位置"] = "要確認"
+            info["位置メモ"] = f"直前のGPS写真から約{round(gap / 60)}分後の位置を引き継ぎ"
+            reason["引き継ぎで時間差大"] += 1
+        else:
+            info["位置"] = "推定"
+        flags[r["id"]] = info
 
     # 2) 推定位置の海上チェック
     sea_days = Counter()
@@ -113,12 +136,16 @@ def main():
         for r in est:
             if res[(round(r["lat"], 5), round(r["lon"], 5))] is None:
                 memo = "海上（標高データなし）"
-                old = flags[r["id"]][1]
-                flags[r["id"]] = ("要確認", f"{old}／{memo}" if old else memo)
+                old = flags[r["id"]].get("位置メモ")
+                flags[r["id"]]["位置"] = "要確認"
+                flags[r["id"]]["位置メモ"] = f"{old}／{memo}" if old else memo
                 sea_days[r["taken"][:10]] += 1
+                reason["海上"] += 1
 
-    kinds = Counter(v[0] for v in flags.values())
+    kinds = Counter(v["位置"] for v in flags.values())
     print(f"要確認 {kinds['要確認']}件 / 推定 {kinds['推定']}件（対象は位置あり {len(rows)}件のうち）")
+    if est_loc:
+        print("  要確認の理由（重複あり）:", dict(reason))
     if a.check_sea:
         print(f"  うち海上: {sum(sea_days.values())}件 / 撮影日ごと: {sorted(sea_days.items())}")
     if not a.apply:
@@ -134,11 +161,8 @@ def main():
     kind_of = {r["id"]: r["kind"] for r in rows}
 
     def work(item):
-        rid, (flag, memo) = item
-        extra = {"source": "lichens", "kind": kind_of[rid], "位置": flag}
-        if memo:
-            extra["位置メモ"] = memo
-        patch(url, key, str(uuid.uuid5(NS, "lichens:" + rid)), extra)
+        rid, info = item
+        patch(url, key, str(uuid.uuid5(NS, "lichens:" + rid)), {"source": "lichens", "kind": kind_of[rid], **info})
 
     print("反映中…")
     with ThreadPoolExecutor(8) as ex:

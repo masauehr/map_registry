@@ -3,6 +3,8 @@ const cfg = window.MAP_CONFIG;
 const panel = document.getElementById("panel");
 const whoEl = document.getElementById("who");
 const filterEl = document.getElementById("filter");
+const locFilterEl = document.getElementById("locFilter");
+const locCountEl = document.getElementById("locCount");
 
 if (!cfg.url || !cfg.anonKey) {
   document.body.textContent = "web/config.js に Supabase の url と anonKey を設定してください。";
@@ -42,7 +44,18 @@ function getElevation(lat, lng) {
 }
 const fmtElev = v => (v === null ? "標高 データなし（海上・範囲外など）" : `標高 ${v.toFixed(1)} m`);
 // 位置の信頼度は extra に持つ。LOC_KEY の値は「要確認」（位置が不確か）か「推定」（撮影時刻などから推定）
-const LOC_KEY = "位置", LOC_NOTE = "位置メモ";
+const LOC_KEY = "位置", LOC_NOTE = "位置メモ", LOC_METHOD = "位置方法", LOC_GAP = "位置時間差(分)";
+const LOC_KEYS = [LOC_KEY, LOC_NOTE, LOC_METHOD, LOC_GAP];  // 位置の信頼度に関する項目（属性の一覧には出さず、専用の表示にする）
+// 凡例
+const legend = L.control({ position: "bottomleft" });
+legend.onAdd = () => {
+  const d = L.DomUtil.create("div", "legend");
+  d.innerHTML = '<div><span class="dot" style="border:2px solid #1f77b4;background:#1f77b4aa"></span>承認済み</div>'
+    + '<div><span class="dot" style="border:2px solid #e67e22;background:#e67e22aa"></span>未承認（自分・管理者のみ）</div>'
+    + '<div><span class="dot" style="border:2px dashed #c0392b;background:#fff8"></span>位置要確認</div>';
+  return d;
+};
+legend.addTo(map);
 let picking = false;  // 投稿パネルで位置を選んでいる間は、地図クリックを位置選択に使う
 
 // 地図をクリックすると、その地点の緯度・経度・標高を表示する（投稿の位置選択中を除く。点・クラスタのクリックは対象外）
@@ -111,9 +124,17 @@ async function fetchAllPoints() {
   return all;
 }
 
-async function loadPoints() {
+let lastData = [];
+async function loadPoints() { lastData = await fetchAllPoints(); renderPoints(); }
+
+// 位置の絞り込み: すべて／要確認のみ／要確認を除く
+function renderPoints() {
   layer.clearLayers();
-  const data = await fetchAllPoints();
+  const mode = locFilterEl.value;
+  const isUncertain = p => (p.extra || {})[LOC_KEY] === "要確認";
+  const data = lastData.filter(p => mode === "" || (mode === "uncertain" ? isUncertain(p) : !isUncertain(p)));
+  const nUnc = lastData.filter(isUncertain).length;
+  locCountEl.textContent = nUnc ? `位置要確認 ${nUnc}件` : "";
   const markers = data.map(p => {
     const x = p.extra || {};
     const uncertain = x[LOC_KEY] === "要確認";
@@ -137,14 +158,15 @@ async function loadPoints() {
         warnEl.textContent = msgs.length ? "⚠ " + msgs.join(" / ") : "";
       };
       setWarn(undefined);
-      const estEl = x[LOC_KEY] === "推定" ? el("div", { textContent: "位置は撮影時刻などから推定した値です", style: "color:#666;font-size:12px" }) : "";
+      const how = x[LOC_METHOD] ? `（${x[LOC_METHOD]}${x[LOC_GAP] !== undefined ? `・参照写真と約${x[LOC_GAP]}分差` : ""}）` : "";
+      const estEl = x[LOC_KEY] ? el("div", { textContent: "位置は撮影時刻などから推定した値です" + how, style: "color:#666;font-size:12px" }) : "";
       getElevation(p.lat, p.lng).then(v => { elevEl.textContent = fmtElev(v); setWarn(v); m.getPopup() && m.getPopup().update(); });
       return (cachedBody = el("div", {},
         el("b", { textContent: (cat ? cat.name : p.category_id) + (p.status === "approved" ? "" : "（未承認）") }),
         el("div", { textContent: new Date(p.observed_at).toLocaleString("ja-JP") }),
         photo,
         el("div", { textContent: p.note }),
-        el("div", { textContent: Object.entries(x).filter(([k]) => k !== LOC_KEY && k !== LOC_NOTE).map(([k, v]) => `${k}: ${v}`).join(" / ") }),
+        el("div", { textContent: Object.entries(x).filter(([k]) => !LOC_KEYS.includes(k)).map(([k, v]) => `${k}: ${v}`).join(" / ") }),
         elevEl, warnEl, estEl));
     });
     return m;
@@ -211,6 +233,7 @@ function applyPanel() {
   };
   showPanel(el("h3", { textContent: "登録申請" }),
     el("p", { textContent: "投稿するには管理者の承認が必要です。連絡先は公開されません。" }),
+    el("p", { style: "font-size:12px;color:#555", textContent: "【個人情報の取り扱い】入力した表示名・メール・利用目的は、承認の可否の判断と招待メールの送信にのみ使い、公開しません。削除を希望する場合は管理者に連絡してください。投稿した写真・位置・メモは、承認後に誰でも閲覧できます（位置はぼかしを選べます）。" }),
     el("label", { textContent: "表示名" }), name, el("label", { textContent: "連絡先メール" }), email,
     el("label", { textContent: "利用目的" }), purpose, widget, el("p", {}, go), out);
   loadTurnstile().then(() => window.turnstile.render(widget, {
@@ -406,6 +429,7 @@ document.getElementById("btnLogin").onclick = async () => {
 };
 document.getElementById("btnApply").onclick = applyPanel;
 filterEl.onchange = loadPoints;
+locFilterEl.onchange = renderPoints;
 sb.auth.onAuthStateChange(() => { refreshMe().then(loadPoints); });
 
 (async () => { await loadCategories(); await refreshMe(); await loadPoints(); })();

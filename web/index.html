@@ -13,6 +13,8 @@
   <header>
     <h1>map_registry</h1>
     <label>カテゴリ <select id="filter"><option value="">すべて</option></select></label>
+    <label>位置 <select id="locFilter"><option value="">すべて</option><option value="uncertain">要確認のみ</option><option value="certain">要確認を除く</option></select></label>
+    <span id="locCount"></span>
     <span id="who"></span>
     <button id="btnLogin">ログイン</button>
     <button id="btnApply">登録申請</button>
@@ -26,6 +28,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/lite.umd.js"></script>
   <script src="config.js"></script>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
