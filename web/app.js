@@ -41,6 +41,8 @@ function getElevation(lat, lng) {
   return elevCache.get(key);
 }
 const fmtElev = v => (v === null ? "標高 データなし（海上・範囲外など）" : `標高 ${v.toFixed(1)} m`);
+// 位置の信頼度は extra に持つ。LOC_KEY の値は「要確認」（位置が不確か）か「推定」（撮影時刻などから推定）
+const LOC_KEY = "位置", LOC_NOTE = "位置メモ";
 let picking = false;  // 投稿パネルで位置を選んでいる間は、地図クリックを位置選択に使う
 
 // 地図をクリックすると、その地点の緯度・経度・標高を表示する（投稿の位置選択中を除く。点・クラスタのクリックは対象外）
@@ -113,21 +115,34 @@ async function loadPoints() {
   layer.clearLayers();
   const data = await fetchAllPoints();
   const markers = data.map(p => {
-    const color = p.status === "approved" ? "#1f77b4" : "#e67e22";
-    const m = L.circleMarker([p.lat, p.lng], { radius: 7, color, fillOpacity: 0.7, bubblingMouseEvents: false });
+    const x = p.extra || {};
+    const uncertain = x[LOC_KEY] === "要確認";
+    const color = uncertain ? "#c0392b" : (p.status === "approved" ? "#1f77b4" : "#e67e22");
+    const m = L.circleMarker([p.lat, p.lng], uncertain
+      ? { radius: 8, color, weight: 2, dashArray: "3 3", fillColor: "#fff", fillOpacity: 0.5, bubblingMouseEvents: false }
+      : { radius: 7, color, fillOpacity: 0.7, bubblingMouseEvents: false });
     // ポップアップの中身は開いたときに作る（件数が多くても軽くする。画像もこの時点で初めて読み込まれる）
     m.bindPopup(() => {
       const cat = categories.find(c => c.id === p.category_id);
       const photo = p.photo_path ? el("img", { src: photoUrl(p.photo_path), alt: "", style: "max-width:220px;max-height:220px;display:block;margin:4px 0" }) : "";
       const elevEl = el("div", { textContent: "標高 取得中…" });
-      getElevation(p.lat, p.lng).then(v => { elevEl.textContent = fmtElev(v); m.getPopup() && m.getPopup().update(); });
+      const warnEl = el("div", { style: "color:#c0392b;font-weight:bold" });
+      const setWarn = v => {  // v: 標高。null は標高データなし（海上・範囲外）
+        const msgs = [];
+        if (x[LOC_KEY] === "要確認") msgs.push("位置要確認" + (x[LOC_NOTE] ? `（${x[LOC_NOTE]}）` : ""));
+        if (v === null) msgs.push("標高データなし（海上など）の位置です。正しい場所か確認してください");
+        warnEl.textContent = msgs.length ? "⚠ " + msgs.join(" / ") : "";
+      };
+      setWarn(undefined);
+      const estEl = x[LOC_KEY] === "推定" ? el("div", { textContent: "位置は撮影時刻などから推定した値です", style: "color:#666;font-size:12px" }) : "";
+      getElevation(p.lat, p.lng).then(v => { elevEl.textContent = fmtElev(v); setWarn(v); m.getPopup() && m.getPopup().update(); });
       return el("div", {},
         el("b", { textContent: (cat ? cat.name : p.category_id) + (p.status === "approved" ? "" : "（未承認）") }),
         el("div", { textContent: new Date(p.observed_at).toLocaleString("ja-JP") }),
         photo,
         el("div", { textContent: p.note }),
-        el("div", { textContent: Object.entries(p.extra || {}).map(([k, v]) => `${k}: ${v}`).join(" / ") }),
-        elevEl);
+        el("div", { textContent: Object.entries(x).filter(([k]) => k !== LOC_KEY && k !== LOC_NOTE).map(([k, v]) => `${k}: ${v}`).join(" / ") }),
+        elevEl, warnEl, estEl);
     });
     return m;
   });
@@ -230,6 +245,7 @@ function showPostPanel() {
   const copyBtn = el("button", { textContent: "コピー", type: "button", onclick: () => navigator.clipboard && exifText.value && navigator.clipboard.writeText(exifText.value) });
   const stampChk = el("input", { type: "checkbox" });
   const altChk = el("input", { type: "checkbox", checked: true });
+  const uncertainChk = el("input", { type: "checkbox" });  // 位置が不確かなとき「要確認」を付ける
   const fmtDate = d => `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   // 選んだぼかしを反映した「公開される位置」（サーバーの処理と同じ格子の中心）
   const publicPos = () => {
@@ -262,6 +278,7 @@ function showPostPanel() {
     const extra = {};
     extraBox.querySelectorAll("[name]").forEach(i => { if (i.value) extra[i.name] = i.value; });
     if (altChk.checked && altitude !== null) extra["標高(m)"] = Number(altitude.toFixed(1));
+    if (uncertainChk.checked) extra[LOC_KEY] = "要確認";
     let photoPath = null;
     if (photoIn.files[0]) {
       try {
@@ -277,7 +294,7 @@ function showPostPanel() {
       ...(observedAt ? { p_observed_at: observedAt.toISOString() } : {}) });
     if (error) { out.replaceChildren(msg("投稿できませんでした: " + error.message)); return; }
     out.replaceChildren(msg("投稿しました（承認後に公開されます）", true));
-    note.value = ""; photoIn.value = ""; observedAt = null; altitude = null; exifText.value = ""; photoInfo.textContent = ""; await loadPoints();
+    note.value = ""; photoIn.value = ""; observedAt = null; altitude = null; exifText.value = ""; photoInfo.textContent = ""; uncertainChk.checked = false; await loadPoints();
   };
   const nodes = [el("h3", { textContent: "地点を登録" }), el("label", { textContent: "カテゴリ" }), cat,
     el("label", { textContent: "メモ" }), note, extraBox,
@@ -285,6 +302,7 @@ function showPostPanel() {
     el("label", { textContent: "写真から読み取った情報（コピー可）" }), exifText, el("p", {}, copyBtn),
     el("label", {}, altChk, " 標高を属性に記録する"),
     el("label", {}, stampChk, " 位置・標高・日時を写真に文字で入れる（公開位置のぼかしを反映）"),
+    el("label", {}, uncertainChk, " 位置が不確か（「要確認」のマークを付ける）"),
     el("label", { textContent: "公開位置のぼかし" }), blur,
     pos, el("p", {}, go), out];
   if (me.member.role === "admin") nodes.push(el("hr"), el("button", { textContent: "承認待ちを確認", onclick: adminPanel }));
@@ -296,7 +314,11 @@ function showPostPanel() {
     if (pickMarker) pickMarker.remove();
     pickMarker = L.marker(picked).addTo(map);
     pos.textContent = `選択位置: ${picked.lat.toFixed(5)}, ${picked.lng.toFixed(5)}（正確な位置は管理者と本人のみ）`;
-    getElevation(ll.lat, ll.lng).then(v => { if (picked === ll) pos.textContent += `　${fmtElev(v)}`; });
+    getElevation(ll.lat, ll.lng).then(v => {
+      if (picked !== ll) return;
+      pos.textContent += `　${fmtElev(v)}`;
+      if (v === null) { pos.textContent += "　⚠ 海上の可能性があります。位置を確認してください"; uncertainChk.checked = true; }
+    });
   }
   function onPick(e) { setPick(e.latlng); }
 

@@ -61,6 +61,15 @@ def photo_name(r):
     return re.sub(r"[^A-Za-z0-9_.-]", "_", i) + "_" + hashlib.sha1(i.encode("utf-8")).hexdigest()[:8]
 
 
+def loc_flag(r):
+    """位置の信頼度。note付き（同じ日の写真の近く・人が判断した暫定位置）は「要確認」、他の推定は「推定」。"""
+    if r.get("note"):
+        return {"位置": "要確認", "位置メモ": r["note"]}
+    if r.get("est"):
+        return {"位置": "推定"}
+    return {}
+
+
 def located(rows):
     return [r for r in rows if r.get("lat") is not None and r.get("lon") is not None]
 
@@ -152,7 +161,7 @@ def main():
         point = {"id": pid, "category_id": "lichen", "display_geom": f"SRID=4326;POINT({dlon} {dlat})",
                  "note": "", "photo_path": f"import/lichens/{photo_name(r)}.jpg" if photo else None,
                  "observed_at": r["taken"] + "+09:00",
-                 "extra": {"source": "lichens", "kind": r["kind"]}, "status": "approved"}
+                 "extra": {"source": "lichens", "kind": r["kind"], **loc_flag(r)}, "status": "approved"}
         priv = {"point_id": pid, "geom": f"SRID=4326;POINT({lon} {lat})", "created_by": uid}
         return point, priv
 
