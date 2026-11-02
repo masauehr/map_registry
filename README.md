@@ -24,6 +24,7 @@ Supabase（認証・DB・画像・行単位権限）＋ Leaflet 静的フロン�
 ## ドキュメント
 | ファイル | 内容 |
 |---|---|
+| [docs/launch_checklist.md](docs/launch_checklist.md) | 公開前チェックリスト（サインアップ無効化・Turnstile・SMTP・点検ツール） |
 | [docs/location_quality.md](docs/location_quality.md) | 位置の信頼度（要確認マーク）の調査結果と今後の修正予定 |
 | [docs/research_wajima_dx.md](docs/research_wajima_dx.md) | 輪島市DX調査・流用可否の評価 |
 | [docs/design.md](docs/design.md) | 構成案比較・データモデル・Phase計画 |
