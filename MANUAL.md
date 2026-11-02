@@ -76,4 +76,4 @@ Supabase（認証・DB・画像・行単位権限）＋ Leaflet 静的フロン�
 - lichens 側: `estimate_locations.py` に `--sameday-max`（同日規則の時間差の上限。既定0=無制限）、`build_map.py` は method・gap を photos.json に出力。いずれも**再生成するまで反映されない**（未実行）。
 - **要確認の絞り込み**: 画面上部の「位置」で「すべて／要確認のみ／要確認を除く」。件数表示と凡例（赤い破線＝要確認）を追加。
 - **個人情報の取り扱い**の説明を申請フォームに追加。
-- **公開前の点検**: `tools/check_public.py`（書き込みなし）と `docs/launch_checklist.md`。点検の結果、**サインアップが有効のまま**・ALLOWED_ORIGINS 未設定・Turnstile がテスト用、が判明（あなたの設定が必要）。
+- **公開前の点検**: `tools/check_public.py`（書き込みなし）と `docs/launch_checklist.md`（手順つきは `docs/supabase_setup_guide.md`）。点検の結果、**サインアップが有効のまま**・ALLOWED_ORIGINS 未設定・Turnstile がテスト用、が判明（あなたの設定が必要）。
